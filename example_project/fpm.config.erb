@@ -1,0 +1,18 @@
+<% # Setup arguments for fpm https://github.com/jordansissel/fpm to build rpms %>
+--input-type dir
+--output-type rpm
+--name <%= ENV["RPM_NAME"] %>
+--version <%= ENV["RPM_VERSION"] %>
+--iteration <%= ENV["RPM_RELEASE"] %>
+--prefix /opt/example
+--rpm-user user
+--rpm-group users
+
+<% # Can use --depends multiple times for each dependency
+   # this RPM has. %>
+<% # Note for RPMs there are 3 elements of a version:
+   #   Name        : java-1.8.0-openjdk
+   #   Epoch       : 1
+   #   Version     : 1.8.0.161
+   #   Release     : 0.b14.el7_4 %>
+<%   # --depends 'tomcat' %>

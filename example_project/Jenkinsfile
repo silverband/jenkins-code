@@ -1,0 +1,92 @@
+#!/usr/bin/env groovy
+def COLOR_MAP = [
+    'SUCCESS': 'good',
+    'FAILURE': 'danger',
+]
+
+pipeline {
+  agent any
+
+  post {
+    always { 
+      cleanWs(cleanWhenSuccess: true, cleanWhenFailure: true, cleanWhenAborted: true, cleanWhenNotBuilt:true, deleteDirs: true, notFailBuild: true)
+    }
+  }
+
+  environment {
+    RPM_NAME = ""
+    RPM_VERSION = "1.0.${BUILD_NUMBER}"
+    RPM_RELEASE = "1"
+    RPM_FILENAME = "${RPM_NAME}-${RPM_VERSION}-${RPM_RELEASE}.x86_64.rpm"
+    BUCKET = ""
+  }
+
+  stages {
+   
+    stage('Checkout core and commonapp'){
+      agent any
+      steps {
+         dir('required_git_lib'){
+            git(url: '<git repo url>', credentialsId: '<jenkins git user account if required>');
+	 }
+      }
+    }
+
+    stage('Build and Archive JAR file') {
+      agent {
+        dockerfile { filename 'Dockerfile.build' }
+      }
+      steps {
+        sh 'cd required_git_lib; ant; cd ..'
+	// compile main_branch
+        sh 'ant'
+        archiveArtifacts artifacts: 'lib/*.jar', fingerprint: true
+      }
+    }
+    stage('Build and Archive RPM') {
+      agent {
+        dockerfile { filename 'Dockerfile.rpm' }
+      }
+      steps {
+        // Most of fpm parameters live in fpm.config.erb because Jenkins didn't cope with quotes well.
+        // see https://gist.github.com/Faheetah/e11bd0315c34ed32e681616e41279ef4
+        // NOTE: Jenkins not showing command exec correctly
+        // shows: erb fpm.config.erb
+        // but does actually pipe the output to .fpm
+        sh 'erb fpm.config.erb > .fpm'
+        sh 'fpm -C rpm_build .'
+        archiveArtifacts artifacts: "${RPM_FILENAME}", fingerprint: true
+      }
+    }
+    stage('Upload RPM') {
+      agent {
+        dockerfile { filename 'Dockerfile.rpm' }
+      }
+      environment {
+        ACCESS_KEY = credentials('${MINIO_ACCESS_KEY}')
+        SECRET_KEY = credentials('${MINIO_SECRET_KEY}')
+      }
+      steps {
+        sh 'mc --config-dir "$(pwd)/.mc" config host add rpm_repo ${REPO_HOST} ${ACCESS_KEY} ${SECRET_KEY}'
+        sh 'mc --config-dir "$(pwd)/.mc" cp ${RPM_FILENAME} rpm_repo/${BUCKET}'
+      }
+    }
+    stage('tag build') {
+      agent any
+      environment {
+        BRANCH_NAME = ""
+        J_GIT_CONFIG = "true"
+        J_USERNAME = ""
+        J_email = ""
+        J_CREDS_IDS = ""
+      }
+      steps {
+        script {
+           def gitLib = load "git_push_ssh.groovy"
+
+           gitLib.pushSSH(commitMsg: "Jenkins build #${BUILD_NUMBER}", tagName: "Production-${BUILD_NUMBER}");
+        }
+      }
+    }
+  }
+}

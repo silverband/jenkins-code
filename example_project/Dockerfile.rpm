@@ -1,0 +1,10 @@
+FROM alpine:latest
+
+# Install FPM
+# based on https://github.com/jordansissel/fpm/blob/master/Dockerfile
+RUN apk add --update ruby ruby-dev ruby-etc gcc libffi-dev make libc-dev rpm 
+RUN gem install --no-document fpm
+ 
+# Install Minio Client (mc)
+RUN wget -P /bin https://dl.minio.io/client/mc/release/linux-amd64/mc && \
+  chmod +x /bin/mc
